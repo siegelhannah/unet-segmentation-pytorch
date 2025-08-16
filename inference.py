@@ -96,7 +96,7 @@ def postprocess_per_volume(
         volume_pred = np.round(
             np.array(pred_list[index : index + num_slices[p]])
         ).astype(int)
-        volume_pred = largest_connected_component(volume_pred)
+        # volume_pred = largest_connected_component(volume_pred)
         volume_true = np.array(true_list[index : index + num_slices[p]])
         volumes[patients[p]] = (volume_in, volume_pred, volume_true)
         index += num_slices[p]
