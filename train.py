@@ -6,14 +6,106 @@ import numpy as np
 import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from tqdm import tqdm
+# from tqdm import tqdm
 
-from dataset import BrainSegmentationDataset as Dataset
+from dataset import WildfireDataset as Dataset # custom dataset
+
 from logger import Logger
 from loss import DiceLoss
 from transform import transforms
 from unet import UNet
 from utils import log_images, dsc
+
+
+
+def datasets(args):
+    """ create train/validation datasets manually using filepaths from pre-generated samples_list
+        
+        we shuffle and split explicitly here to control exactly which samples go into training vs validation
+        This avoids having the Dataset class handle splitting internally
+    """
+    # TODO: logic here to get all paths for stacked files and CORRESPONDING firemask files
+    samples_list = []
+    # structure should be:
+    samples_list.append({
+        "stacked_path": ..., 
+        "fire_mask_path": ...
+    })
+
+    # shuffle and split into train & validation (80/20)
+    np.random.seed(42)
+    np.random.shuffle(samples_list)
+    split_idx = int(len(samples_list) * 0.8)
+    train_list = samples_list[:split_idx]
+    valid_list = samples_list[:split_idx]
+
+    # create datasets
+    train_dataset = Dataset(
+        train_list, 
+        image_size=args.image_size, # to resize
+        transform=transforms(scale=arge.aug_scale, angle=arge.aug_angle, flilp_prob=0.5) # to transform
+    )
+
+    valid_dataset = Dataset(
+        valid_list,
+        image_size=args.image_size,
+        transform=None,
+    )
+
+    return train_dataset, valid_dataset
+
+
+
+
+def data_loaders(args):
+    dataset_train, dataset_valid = datasets(args)
+
+    def worker_init(worker_id):
+        np.random.seed(42 + worker_id)
+
+    loader_train = DataLoader(
+        dataset_train,
+        batch_size=args.batch_size,
+        shuffle=True,
+        drop_last = True,
+        num_workers=args.workers,
+        worker_init_fn=worker_init,
+    )
+    loader_valid = DataLoader(
+        dataset_valid,
+        batch_size=args.batch_size,
+        drop_last = False,
+        num_workers=args.workers,
+        worker_init_fn=worker_init,
+    )
+
+    return loader_train, loader_valid
+
+
+
+def dsc_per_sample():
+    """ computed per wildfire SAMPLE"""
+    return [dsc(y_pred, y_true) for y_pred, y_true in zip(pred_list, true_list)]
+
+
+
+
+def log_loss_summary(logger, loss, step, prefix=""):
+    logger.scalar_summary(prefix + "loss", np.mean(loss), step)
+
+
+def makedirs(args):
+    os.makedirs(args.weights, exist_ok=True)
+    os.makedirs(args.logs, exist_ok=True)
+
+
+def snapshotargs(args):
+    args_file = os.path.join(args.logs, "args.json")
+    with open(args_file, "w") as fp:
+        json.dump(vars(args), fp)
+
+
+
 
 
 def main(args):
@@ -24,19 +116,19 @@ def main(args):
     loader_train, loader_valid = data_loaders(args)
     loaders = {"train": loader_train, "valid": loader_valid}
 
-    unet = UNet(in_channels=Dataset.in_channels, out_channels=Dataset.out_channels)
+    unet = UNet(in_channels=Dataset.in_channels, out_channels=Dataset.out_channels) # 17 in, 1 out
     unet.to(device)
 
     dsc_loss = DiceLoss()
-    best_validation_dsc = 0.0
 
     optimizer = optim.Adam(unet.parameters(), lr=args.lr)
 
     logger = Logger(args.logs)
+
+    best_validation_dsc = 0.0
+    step = 0
     loss_train = []
     loss_valid = []
-
-    step = 0
 
     for epoch in tqdm(range(args.epochs), total=args.epochs):
         for phase in ["train", "valid"]:
@@ -93,13 +185,8 @@ def main(args):
 
             if phase == "valid":
                 log_loss_summary(logger, loss_valid, step, prefix="val_")
-                mean_dsc = np.mean(
-                    dsc_per_volume(
-                        validation_pred,
-                        validation_true,
-                        loader_valid.dataset.patient_slice_index,
-                    )
-                )
+                # simplified diceloss for wildfire prediction
+                mean_dsc = np.mean([dsc(y_pred, y_true) for y_pred, y_true in zip(validation_pred, validation_true)])
                 logger.scalar_summary("val_dsc", mean_dsc, step)
                 if mean_dsc > best_validation_dsc:
                     best_validation_dsc = mean_dsc
@@ -109,77 +196,15 @@ def main(args):
     print("Best validation mean DSC: {:4f}".format(best_validation_dsc))
 
 
-def data_loaders(args):
-    dataset_train, dataset_valid = datasets(args)
-
-    def worker_init(worker_id):
-        np.random.seed(42 + worker_id)
-
-    loader_train = DataLoader(
-        dataset_train,
-        batch_size=args.batch_size,
-        shuffle=True,
-        drop_last=True,
-        num_workers=args.workers,
-        worker_init_fn=worker_init,
-    )
-    loader_valid = DataLoader(
-        dataset_valid,
-        batch_size=args.batch_size,
-        drop_last=False,
-        num_workers=args.workers,
-        worker_init_fn=worker_init,
-    )
-
-    return loader_train, loader_valid
 
 
-def datasets(args):
-    train = Dataset(
-        images_dir=args.images,
-        subset="train",
-        image_size=args.image_size,
-        transform=transforms(scale=args.aug_scale, angle=args.aug_angle, flip_prob=0.5),
-    )
-    valid = Dataset(
-        images_dir=args.images,
-        subset="validation",
-        image_size=args.image_size,
-        random_sampling=False,
-    )
-    return train, valid
 
 
-def dsc_per_volume(validation_pred, validation_true, patient_slice_index):
-    dsc_list = []
-    num_slices = np.bincount([p[0] for p in patient_slice_index])
-    index = 0
-    for p in range(len(num_slices)):
-        y_pred = np.array(validation_pred[index : index + num_slices[p]])
-        y_true = np.array(validation_true[index : index + num_slices[p]])
-        dsc_list.append(dsc(y_pred, y_true))
-        index += num_slices[p]
-    return dsc_list
-
-
-def log_loss_summary(logger, loss, step, prefix=""):
-    logger.scalar_summary(prefix + "loss", np.mean(loss), step)
-
-
-def makedirs(args):
-    os.makedirs(args.weights, exist_ok=True)
-    os.makedirs(args.logs, exist_ok=True)
-
-
-def snapshotargs(args):
-    args_file = os.path.join(args.logs, "args.json")
-    with open(args_file, "w") as fp:
-        json.dump(vars(args), fp)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Training U-Net model for segmentation of brain MRI"
+        description="Training U-Net model for wildfire prediction segmentation"
     )
     parser.add_argument(
         "--batch-size",
