@@ -100,7 +100,7 @@ class CenterShift(object):
     This effectively moves the "center" of the image to make spatial variation
     """
     
-    def __init__(self, max_shift_fraction=0.2):
+    def __init__(self, max_shift_fraction):
         """
         Maximum shift as fraction of image size (0.2 = 20% of image size)
         """
