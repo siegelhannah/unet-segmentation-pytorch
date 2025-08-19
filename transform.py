@@ -12,6 +12,8 @@ def transforms(scale=None, angle=None, flip_prob=None):
         transform_list.append(Rotate(angle))
     if flip_prob is not None:
         transform_list.append(HorizontalFlip(flip_prob))
+    if max_shift_fraction is not None:
+        transform_list.append(CenterShift(max_shift_fraction))
 
     return Compose(transform_list)
 

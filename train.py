@@ -63,21 +63,6 @@ def data_loaders(args):
 
 
 
-
-# def dsc_per_volume(validation_pred, validation_true, patient_slice_index):
-#     dsc_list = []
-#     num_slices = np.bincount([p[0] for p in patient_slice_index])
-#     index = 0
-#     for p in range(len(num_slices)):
-#         y_pred = np.array(validation_pred[index : index + num_slices[p]])
-#         y_true = np.array(validation_true[index : index + num_slices[p]])
-#         dsc_list.append(dsc(y_pred, y_true))
-#         index += num_slices[p]
-#     return dsc_list
-
-
-
-
 def log_loss_summary(logger, loss, step, prefix=""):
     logger.scalar_summary(prefix + "loss", np.mean(loss), step)
 
@@ -107,8 +92,8 @@ def main(args):
     unet = UNet(in_channels=Dataset.in_channels, out_channels=Dataset.out_channels)
     unet.to(device)
 
-    dsc_loss = DiceLoss() # define loss metric
-    best_validation_dsc = 0.0
+    dice_loss = DiceLoss() # define loss metric
+    best_validation_loss = float('inf') # we want lower loss, so try to do better than this
 
     optimizer = optim.Adam(unet.parameters(), lr=args.lr)
 
@@ -125,9 +110,6 @@ def main(args):
             else:
                 unet.eval()
 
-            # validation_pred = []
-            # validation_true = []
-
             for i, data in enumerate(loaders[phase]): # iterate thru batches coming from DataLoader (either train batches or valid)
                 if phase == "train":
                     step += 1
@@ -140,19 +122,12 @@ def main(args):
                 # Forward Pass and Loss Calculation
                 with torch.set_grad_enabled(phase == "train"): # only compute gradients when in training phase
                     y_pred = unet(x)
-                    loss = dsc_loss(y_pred, y_true)
+                    loss = dice_loss(y_pred, y_true)
 
                     # Validation step
                     if phase == "valid":
                         loss_valid.append(loss.item()) # accumulate validation loss
 
-
-                        # keep track of valid_pred/valid_trues, for dsc_per_volume()
-                        # y_pred_np = y_pred.detach().cpu().numpy()
-                        # validation_pred.extend([y_pred_np[s] for s in range(y_pred_np.shape[0])])
-                        # y_true_np = y_true.detach().cpu().numpy()
-                        # validation_true.extend([y_true_np[s] for s in range(y_true_np.shape[0])])
-                        
                         # data viz stuff
                         if (epoch % args.vis_freq == 0) or (epoch == args.epochs - 1):
                             if i * args.batch_size < args.vis_images:
@@ -177,28 +152,25 @@ def main(args):
 
             if phase == "valid":
                 log_loss_summary(logger, loss_valid, step, prefix="val_")
-                mean_dsc = np.mean(loss_valid) # mean of all valid losses
-                # mean_dsc = np.mean( 
-                #     dsc_per_volume(
-                #         validation_pred,
-                #         validation_true,
-                #         loader_valid.dataset.patient_slice_index,
-                #     )
-                # )
-                logger.scalar_summary("val_dsc", mean_dsc, step)
-                if mean_dsc > best_validation_dsc:
-                    best_validation_dsc = mean_dsc
+                mean_val_loss = np.mean(loss_valid) # mean of all validation losses
+               
+                # print dsc (1 - diceloss: higher is better)
+                mean_val_dsc = 1.0 - mean_val_loss
+                logger.scalar_summary("val_dsc", mean_val_dsc, step)
+                
+                if mean_val_loss < best_validation_loss:
+                    best_validation_loss = mean_val_loss
                     torch.save(unet.state_dict(), os.path.join(args.weights, "unet.pt"))
                 loss_valid = []
 
-    print("Best validation mean DSC: {:4f}".format(best_validation_dsc))
+    print("Best validation mean DSC: {:4f}".format(best_validation_loss))
 
 
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Training U-Net model for segmentation of brain MRI"
+        description="Training U-Net model for segmentation of wildfire masks at t+1"
     )
     parser.add_argument(
         "--batch-size",
@@ -216,7 +188,7 @@ if __name__ == "__main__":
         "--lr",
         type=float,
         default=0.0001,
-        help="initial learning rate (default: 0.001)",
+        help="initial learning rate (default: 0.0001)",
     )
     parser.add_argument(
         "--device",
@@ -259,7 +231,7 @@ if __name__ == "__main__":
     # )
     parser.add_argument(
         "--aug-scale",
-        type=int,
+        type=float,
         default=0.05,
         help="scale factor range for augmentation (default: 0.05)",
     )
@@ -272,7 +244,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--crop_size_km",
         type=int,
-        default=15
+        default=15,
         help="final cropped size in kilometers sidelength (defualt: 15)",
     )
     args = parser.parse_args()

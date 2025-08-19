@@ -16,8 +16,6 @@ from torch.utils.data import Dataset
 # from utils import crop_sample, pad_sample, resize_sample, normalize_volume
 from utils import center_crop_sample # for making images smaller by cropping to a smaller box
 
-from sklearn.model_selection import train_test_split
-
 
 
 class WildfireDataset(Dataset):
@@ -57,14 +55,17 @@ class WildfireDataset(Dataset):
         stacked_files = sorted([f for f in os.listdir(stacked_dir) if f.endswith('.tif')])
         mask_files = sorted([f for f in os.listdir(masks_dir) if f.endswith('.tif')])
 
-        assert len(self.image_paths) == len(self.mask_paths), "Mismatch between number of images and masks"
+        assert len(stacked_files) == len(mask_files), "Mismatch between number of images and masks"
 
         # store file paths for loading as we go
-        self.sample_paths = []
-        for stacked_file, mask_file in zip(stacked_files, mask_files):
-            stacked_path = os.path.join(stacked_dir, stacked_file)
-            mask_path = os.path.join(masks_dir, mask_file)
-            self.sample_paths.append((stacked_path, mask_path)) # list of tuples: (stacked, mask) file paths
+        self.sample_paths = [
+            (os.path.join(stacked_dir, sf), os.path.join(masks_dir, mf)) # list of tuples: (stacked, mask) file paths
+            for sf, mf in zip(stacked_files, mask_files)
+        ]
+
+
+    def __len__(self):
+        return len(self.sample_paths)
 
     
     def load_tif(self, filepath, single_band=False):
@@ -116,7 +117,7 @@ class WildfireDataset(Dataset):
         
         # Apply final crop if specified (LAST step) 50.01km -> ~15 km
         if self.crop_size_km is not None:
-            image, mask = center_crop_sample((image, mask))
+            image, mask = center_crop_sample((image, mask), crop_size_km=self.crop_size_km)
         
         # Transpose to (C, H, W) format for PyTorch
         image = np.transpose(image, (2, 0, 1))  # (H, W, C) -> (C, H, W)
