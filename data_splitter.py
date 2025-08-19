@@ -8,12 +8,22 @@ import pickle
 import shutil
 from sklearn.model_selection import train_test_split
 import argparse
+import tarfile
 
-def split_wildfire_data(pickle_path, output_base_dir, validation_split=0.2, seed=42):
+
+def split_wildfire_data(pickle_path, tar_path, output_base_dir, validation_split=0.2, seed=42):
     """
     Split wildfire data into train/validation directories based on pickle metadata
+
+    extract a downloaded .tar file of tifs and split those accordingly ^
     """
-    with open(pickle_path, 'rb') as f:
+    extract_dir = os.path.join(output_base_dir, "extracted-data") # where to extract the tar file
+    os.makedirs(extract_dir, exist_ok=True)
+    
+    with tarfile.open(tar_file_path, 'r') as tar: # extract
+        tar.extractall(extract_dir)
+
+    with open(pickle_path, 'rb') as f: # open pickle file
         data_info = pickle.load(f)
         
     # Create output directories
@@ -34,14 +44,21 @@ def split_wildfire_data(pickle_path, output_base_dir, validation_split=0.2, seed
     )
         
     # function to copy files for a given split
+    # adjust the soure filepaths to point to the extracted directory
     def copy_files_for_split(indices, target_dir, split_name):
+
         for i, idx in enumerate(indices):
             sample = data_info[idx]
-            # Get paths
-            stacked_src = sample['stacked_path']
-            fire_mask_src = sample['fire_predict_path']
+
+            # Get paths - adjusted to be relative to extracted dir
+            stacked_rel_path = sample['stacked_path'].lstrip('./')
+            fire_mask_rel_path = sample['fire_predict_path'].lstrip('./')
+
+            stacked_src = os.path.join(extract_dir, stacked_rel_path)
+            fire_mask_src - os.path.join(extract_dir, fire_mask_rel_path)
             
             # destination filenames (use in-order INDEX to avoid conflicts)
+            # so that when we sort the files each list stays in the same order (pairs stay together)
             stacked_dst = os.path.join(target_dir, 'stacked', f'stacked_{idx:06d}.tif')
             fire_mask_dst = os.path.join(target_dir, 'fire_masks', f'fire_mask_{idx:06d}.tif')
             
@@ -74,12 +91,14 @@ def split_wildfire_data(pickle_path, output_base_dir, validation_split=0.2, seed
 def main():
     parser = argparse.ArgumentParser(description='Split wildfire dataset')
     parser.add_argument('pickle_path')
+    parser.add_argument('tar_path')
     parser.add_argument('output_dir')
     
     args = parser.parse_args()
     
     split_wildfire_data(
         args.pickle_path,
+        args.tar_path, 
         args.output_dir, 
         args.validation_split,
         args.seed
