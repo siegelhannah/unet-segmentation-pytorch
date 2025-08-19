@@ -1,4 +1,4 @@
-# U-Net for brain segmentation
+# U-Net for brain segmentation ADAPTED FOR A WILDFIRE-PREDICTION USE CASE
 
 U-Net implementation in PyTorch for FLAIR abnormality segmentation in brain MRI based on a deep learning segmentation algorithm used in [Association of genomic subtypes of lower-grade gliomas with shape features automatically extracted by a deep learning algorithm](https://doi.org/10.1016/j.compbiomed.2019.05.002).
 
