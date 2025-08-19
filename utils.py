@@ -12,6 +12,51 @@ def dsc(y_pred, y_true, lcc=True):
     return np.sum(y_pred[y_true == 1]) * 2.0 / (np.sum(y_pred) + np.sum(y_true))
 
 
+
+def center_crop_sample(sample, crop_size_km, original_size_km=50.01, original_pixels=1667):
+    """
+    2D geographic cropping of images:
+    Crop the sample around the center to reduce from ~50km x 50km to crop_size_km x crop_size_km.
+
+    Returns a cropped (image, mask) tuple
+    
+    sample: tuple of (image, mask) - image is (H, W, C) and mask is (H, W, 1)
+    crop_size_km: target size km
+    original_size_km: original size in km
+    original_pixels: Original size in pixels
+    
+    """
+    image, mask = sample
+    
+    # Calculate crop size in pixels
+    pixels_per_km = original_pixels / original_size_km
+    crop_pixels = int(crop_size_km * pixels_per_km)
+    
+    # Get current image size (assuming H, W, C format at this point)
+    height, width = image.shape[:2]
+    
+    # Calculate crop boundaries (centered)
+    start_y = (height - crop_pixels) // 2
+    end_y = start_y + crop_pixels
+    start_x = (width - crop_pixels) // 2  
+    end_x = start_x + crop_pixels
+    
+    # Make sure we don't go out of bounds
+    start_y = max(0, start_y)
+    start_x = max(0, start_x)
+    end_y = min(height, end_y)
+    end_x = min(width, end_x)
+    
+    # Apply crop (H, W, C format)
+    cropped_image = image[start_y:end_y, start_x:end_x, :]
+    cropped_mask = mask[start_y:end_y, start_x:end_x, :]
+    
+    return cropped_image, cropped_mask
+
+
+
+
+
 def crop_sample(x):
     volume, mask = x
     volume[volume < np.max(volume) * 0.1] = 0
