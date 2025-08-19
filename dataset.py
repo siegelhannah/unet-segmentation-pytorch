@@ -27,16 +27,17 @@ class WildfireDataset(Dataset):
     def __init__(
         self, 
         data_dir,       # dir for all data- stacked files and masks
-        image_size=256, 
+        # image_size=256, # no longer necessary  - we resize by cropping instead
         transform=None, 
-        crop_size=None, 
+        crop_size_km=None, 
         subset="train", 
         seed=42):
 
         assert subset in ["all", "train", "validation"]
 
         self.transform = transform
-        self.image_size = image_size
+        # self.image_size = image_size
+        self.crop_size_km = crop_size_km
         self.subset = subset
 
         # construct paths based on subset:

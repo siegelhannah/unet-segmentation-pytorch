@@ -6,53 +6,33 @@ import numpy as np
 import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
-# from tqdm import tqdm
+from tqdm import tqdm
 
-from dataset import WildfireDataset as Dataset # custom dataset
-
+# from dataset import BrainSegmentationDataset as Dataset
+from dataset import WildfireDataset as Dataset
 from logger import Logger
 from loss import DiceLoss
 from transform import transforms
 from unet import UNet
-from utils import log_images, dsc
+from utils import log_images#, dsc
+
 
 
 
 def datasets(args):
-    """ create train/validation datasets manually using filepaths from pre-generated samples_list
-        
-        we shuffle and split explicitly here to control exactly which samples go into training vs validation
-        This avoids having the Dataset class handle splitting internally
-    """
-    # TODO: logic here to get all paths for stacked files and CORRESPONDING firemask files
-    samples_list = []
-    # structure should be:
-    samples_list.append({
-        "stacked_path": ..., 
-        "fire_mask_path": ...
-    })
-
-    # shuffle and split into train & validation (80/20)
-    np.random.seed(42)
-    np.random.shuffle(samples_list)
-    split_idx = int(len(samples_list) * 0.8)
-    train_list = samples_list[:split_idx]
-    valid_list = samples_list[:split_idx]
-
-    # create datasets
-    train_dataset = Dataset(
-        train_list, 
-        image_size=args.image_size, # to resize
-        transform=transforms(scale=arge.aug_scale, angle=arge.aug_angle, flilp_prob=0.5) # to transform
+    train = Dataset(
+        data_dir=args.images,
+        transform=transforms(scale=args.aug_scale, angle=args.aug_angle, flip_prob=0.5, max_shift_fraction=0.2),
+        crop_size_km=args.crop_size_km,
+        subset="train"
     )
-
-    valid_dataset = Dataset(
-        valid_list,
-        image_size=args.image_size,
-        transform=None,
+    valid = Dataset(
+        data_dir=args.images,
+        transform=transforms(scale=args.aug_scale, angle=args.aug_angle, flip_prob=0.5, max_shift_fraction=0.2),
+        crop_size_km=args.crop_size_km,
+        subset="validation"
     )
-
-    return train_dataset, valid_dataset
+    return train, valid
 
 
 
@@ -67,14 +47,14 @@ def data_loaders(args):
         dataset_train,
         batch_size=args.batch_size,
         shuffle=True,
-        drop_last = True,
+        drop_last=True,
         num_workers=args.workers,
         worker_init_fn=worker_init,
     )
     loader_valid = DataLoader(
         dataset_valid,
         batch_size=args.batch_size,
-        drop_last = False,
+        drop_last=False,
         num_workers=args.workers,
         worker_init_fn=worker_init,
     )
@@ -83,9 +63,17 @@ def data_loaders(args):
 
 
 
-def dsc_per_sample():
-    """ computed per wildfire SAMPLE"""
-    return [dsc(y_pred, y_true) for y_pred, y_true in zip(pred_list, true_list)]
+
+# def dsc_per_volume(validation_pred, validation_true, patient_slice_index):
+#     dsc_list = []
+#     num_slices = np.bincount([p[0] for p in patient_slice_index])
+#     index = 0
+#     for p in range(len(num_slices)):
+#         y_pred = np.array(validation_pred[index : index + num_slices[p]])
+#         y_true = np.array(validation_true[index : index + num_slices[p]])
+#         dsc_list.append(dsc(y_pred, y_true))
+#         index += num_slices[p]
+#     return dsc_list
 
 
 
@@ -116,19 +104,19 @@ def main(args):
     loader_train, loader_valid = data_loaders(args)
     loaders = {"train": loader_train, "valid": loader_valid}
 
-    unet = UNet(in_channels=Dataset.in_channels, out_channels=Dataset.out_channels) # 17 in, 1 out
+    unet = UNet(in_channels=Dataset.in_channels, out_channels=Dataset.out_channels)
     unet.to(device)
 
-    dsc_loss = DiceLoss()
+    dsc_loss = DiceLoss() # define loss metric
+    best_validation_dsc = 0.0
 
     optimizer = optim.Adam(unet.parameters(), lr=args.lr)
 
     logger = Logger(args.logs)
-
-    best_validation_dsc = 0.0
-    step = 0
     loss_train = []
     loss_valid = []
+
+    step = 0
 
     for epoch in tqdm(range(args.epochs), total=args.epochs):
         for phase in ["train", "valid"]:
@@ -137,33 +125,35 @@ def main(args):
             else:
                 unet.eval()
 
-            validation_pred = []
-            validation_true = []
+            # validation_pred = []
+            # validation_true = []
 
-            for i, data in enumerate(loaders[phase]):
+            for i, data in enumerate(loaders[phase]): # iterate thru batches coming from DataLoader (either train batches or valid)
                 if phase == "train":
                     step += 1
 
                 x, y_true = data
                 x, y_true = x.to(device), y_true.to(device)
 
-                optimizer.zero_grad()
+                optimizer.zero_grad() # zero the gradient before computing the next one
 
-                with torch.set_grad_enabled(phase == "train"):
+                # Forward Pass and Loss Calculation
+                with torch.set_grad_enabled(phase == "train"): # only compute gradients when in training phase
                     y_pred = unet(x)
-
                     loss = dsc_loss(y_pred, y_true)
 
+                    # Validation step
                     if phase == "valid":
-                        loss_valid.append(loss.item())
-                        y_pred_np = y_pred.detach().cpu().numpy()
-                        validation_pred.extend(
-                            [y_pred_np[s] for s in range(y_pred_np.shape[0])]
-                        )
-                        y_true_np = y_true.detach().cpu().numpy()
-                        validation_true.extend(
-                            [y_true_np[s] for s in range(y_true_np.shape[0])]
-                        )
+                        loss_valid.append(loss.item()) # accumulate validation loss
+
+
+                        # keep track of valid_pred/valid_trues, for dsc_per_volume()
+                        # y_pred_np = y_pred.detach().cpu().numpy()
+                        # validation_pred.extend([y_pred_np[s] for s in range(y_pred_np.shape[0])])
+                        # y_true_np = y_true.detach().cpu().numpy()
+                        # validation_true.extend([y_true_np[s] for s in range(y_true_np.shape[0])])
+                        
+                        # data viz stuff
                         if (epoch % args.vis_freq == 0) or (epoch == args.epochs - 1):
                             if i * args.batch_size < args.vis_images:
                                 tag = "image/{}".format(i)
@@ -174,19 +164,27 @@ def main(args):
                                     step,
                                 )
 
+                    # training-specific operations: accumulate loss, backward pass, step
                     if phase == "train":
-                        loss_train.append(loss.item())
+                        loss_train.append(loss.item()) # loss for current batch
                         loss.backward()
                         optimizer.step()
 
+                # logging stuff
                 if phase == "train" and (step + 1) % 10 == 0:
                     log_loss_summary(logger, loss_train, step)
                     loss_train = []
 
             if phase == "valid":
                 log_loss_summary(logger, loss_valid, step, prefix="val_")
-                # simplified diceloss for wildfire prediction
-                mean_dsc = np.mean([dsc(y_pred, y_true) for y_pred, y_true in zip(validation_pred, validation_true)])
+                mean_dsc = np.mean(loss_valid) # mean of all valid losses
+                # mean_dsc = np.mean( 
+                #     dsc_per_volume(
+                #         validation_pred,
+                #         validation_true,
+                #         loader_valid.dataset.patient_slice_index,
+                #     )
+                # )
                 logger.scalar_summary("val_dsc", mean_dsc, step)
                 if mean_dsc > best_validation_dsc:
                     best_validation_dsc = mean_dsc
@@ -198,13 +196,9 @@ def main(args):
 
 
 
-
-
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Training U-Net model for wildfire prediction segmentation"
+        description="Training U-Net model for segmentation of brain MRI"
     )
     parser.add_argument(
         "--batch-size",
@@ -257,12 +251,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--images", type=str, default="./kaggle_3m", help="root folder with images"
     )
-    parser.add_argument(
-        "--image-size",
-        type=int,
-        default=256,
-        help="target input image size (default: 256)",
-    )
+    # parser.add_argument(
+    #     "--image-size",
+    #     type=int,
+    #     default=256,
+    #     help="target input image size (default: 256)",
+    # )
     parser.add_argument(
         "--aug-scale",
         type=int,
@@ -274,6 +268,12 @@ if __name__ == "__main__":
         type=int,
         default=15,
         help="rotation angle range in degrees for augmentation (default: 15)",
+    )
+    parser.add_argument(
+        "--crop_size_km",
+        type=int,
+        default=15
+        help="final cropped size in kilometers sidelength (defualt: 15)",
     )
     args = parser.parse_args()
     main(args)
