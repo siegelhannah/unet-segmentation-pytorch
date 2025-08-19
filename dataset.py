@@ -1,6 +1,6 @@
 """
 Modified dataset class for wildfire prediction:
-One input sample consists of a stacked multiband image with all features (17),
+One input sample consists of a stacked multiband image with all features (18),
 and a ground-truth fire mask raster.
 """
 
@@ -13,7 +13,122 @@ from skimage.io import imread
 import rasterio
 from torch.utils.data import Dataset
 
-from utils import crop_sample, pad_sample, resize_sample, normalize_volume
+# from utils import crop_sample, pad_sample, resize_sample, normalize_volume
+from utils import center_crop_sample # for making images smaller by cropping to a smaller box
+
+from sklearn.model_selection import train_test_split
+
+
+
+class WildfireDataset(Dataset):
+    in_channels=18 # 18 features
+    out_channels=1 # singleband fire mask
+
+    def __init__(
+        self, 
+        data_dir,       # dir for all data- stacked files and masks
+        image_size=256, 
+        transform=None, 
+        crop_size=None, 
+        subset="train", 
+        seed=42):
+
+        assert subset in ["all", "train", "validation"]
+
+        self.transform = transform
+        self.image_size = image_size
+        self.subset = subset
+
+        # construct paths based on subset:
+        if subset == "all":
+            # if using all, assume data dir contains stacked/ and fire_final/
+            stacked_dir = os.path.join(data_dir, 'stacked')
+            masks_dir = os.path.join(data_dir, 'fire_final')
+        else:
+            # if using ALREADY-SEPARATED train/val, expect pre-split directory structure
+            subset_dir = os.path.join(data_dir, subset)
+            stacked_dir = os.path.join(subset_dir, 'stacked')
+            masks_dir = os.path.join(subset_dir, 'fire_final')
+
+        # load all data
+        self.samples=[]
+        # sort so inputs/outputs are in the same order based on date & coords
+        stacked_files = sorted([f for f in os.listdir(stacked_dir) if f.endswith('.tif')])
+        mask_files = sorted([f for f in os.listdir(masks_dir) if f.endswith('.tif')])
+
+        assert len(self.image_paths) == len(self.mask_paths), "Mismatch between number of images and masks"
+
+        # store file paths for loading as we go
+        self.sample_paths = []
+        for stacked_file, mask_file in zip(stacked_files, mask_files):
+            stacked_path = os.path.join(stacked_dir, stacked_file)
+            mask_path = os.path.join(masks_dir, mask_file)
+            self.sample_paths.append((stacked_path, mask_path)) # list of tuples: (stacked, mask) file paths
+
+    
+    def load_tif(self, filepath, single_band=False):
+        # for reading/loading data from tifs/rasters
+        with rasterio.open(filepath) as dataset:
+            if single_band:
+                data = dataset.read(1) # shape (H, W)
+            else:
+                data = dataset.read()   # shape (C, H, W)
+            return data.astype(np.float32)
+                
+
+    def normalize_channels(self, volume):
+        """Normalize each channel of stacked image -  for (H, W, C) format"""
+        normalized = np.zeros_like(volume)
+        num_channels = volume.shape[2]  # We know it's (H, W, C) at this point
+        
+        for c in range(num_channels):
+            channel = volume[:, :, c]
+            mean = channel.mean()
+            std = channel.std()
+            if std > 0:
+                normalized[:, :, c] = (channel - mean) / std
+            else:
+                normalized[:, :, c] = channel - mean
+        
+        return normalized
+
+
+
+   def __getitem__(self, idx):
+        # Load data on-demand
+        stacked_path, mask_path = self.sample_paths[idx]
+        
+        # Load the data
+        image = self.load_tif(stacked_path)  # Shape: (C, H, W)
+        mask = self.load_tif(mask_path, single_band=True)  # Shape: (H, W)
+        
+        # Transpose to (H, W, C) format to match original brainsegmentation dataset & transform funcs
+        image = np.transpose(image, (1, 2, 0))  # (C, H, W) -> (H, W, C)
+        mask = np.expand_dims(mask, axis=2)  # (H, W) -> (H, W, 1)
+        
+        # Normalize (per-channel normalization)
+        image = self.normalize_channels(image)
+        
+        # Apply transforms if provided (transforms expect HWC format)
+        if self.transform is not None:
+            image, mask = self.transform((image, mask))
+        
+        # Apply final crop if specified (LAST step) 50.01km -> ~15 km
+        if self.crop_size_km is not None:
+            image, mask = center_crop_sample((image, mask))
+        
+        # Transpose to (C, H, W) format for PyTorch
+        image = np.transpose(image, (2, 0, 1))  # (H, W, C) -> (C, H, W)
+        mask = np.transpose(mask, (2, 0, 1))    # (H, W, 1) -> (1, H, W)
+        
+        # Convert to tensors
+        image_tensor = torch.from_numpy(image).float()  # Shape: (C, H, W)
+        mask_tensor = torch.from_numpy(mask).float()    # Shape: (1, H, W)
+        
+        return image_tensor, mask_tensor
+
+
+
 
 
 
@@ -145,53 +260,3 @@ from utils import crop_sample, pad_sample, resize_sample, normalize_volume
 #         return image_tensor, mask_tensor
 
 
-
-
-
-
-class WildfireDataset(Dataset):
-    in_channels=17 # 17 features
-    out_channels=1 # singleband fire mask
-
-    def __init__(self, samples, image_size=256, transform=None):
-        """
-        Samples: list of dicts 
-        each dict has stacked_path and fire_mask_path
-        """
-
-        self.samples = samples
-        self.image_size = image_size
-        self.transform = transform
-
-    def __len__(self):
-        return len(self.samples)
-
-    def __getitem__(self, idx):
-        sample = self.samples[idx]
-
-        # load the multiband input raster
-        with rasterio.open(sample['stacked_path']) as src:
-            image = src.read() # shape (C, H, W)
-
-        # load groundtruth firemask
-        with rasterio.open(sample['stacked_path']) as src:
-            mask = src.read(1) # shape (H, W)
-
-        image = image.astype(np.float32)
-        mask = mask.astype(np.float32)
-
-        # add channel dim to mask: (1, H, W)
-        mask = np.expand_dims(mask, axis=0)
-
-        # OPTIONAL resize/normalize etc if we need to
-        if self.transform:
-            image, mask = self.transform(image, mask)
-
-
-        # convert to tensors:
-        image_tensor = torch.from_numpy(image) # (C, W, H)
-        mask_tensor = torch.from_numpy(mask)  # (1, W, H)
-
-        return image_tensor, mask_tensor
-
-                
