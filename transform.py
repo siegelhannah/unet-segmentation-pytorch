@@ -3,7 +3,7 @@ from skimage.transform import rescale, rotate
 from torchvision.transforms import Compose
 
 
-def transforms(scale=None, angle=None, flip_prob=None):
+def transforms(scale=None, angle=None, flip_prob=None, max_shift_fraction=None):
     transform_list = []
 
     if scale is not None:
@@ -33,7 +33,7 @@ class Scale(object):
         image = rescale(
             image,
             (scale, scale),
-            multichannel=True,
+            channel_axis=-1,
             preserve_range=True,
             mode="constant",
             anti_aliasing=False,
@@ -42,7 +42,7 @@ class Scale(object):
             mask,
             (scale, scale),
             order=0,
-            multichannel=True,
+            channel_axis=-1,
             preserve_range=True,
             mode="constant",
             anti_aliasing=False,

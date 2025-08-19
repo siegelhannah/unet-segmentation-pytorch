@@ -1,5 +1,5 @@
 import numpy as np
-from medpy.filter.binary import largest_connected_component
+# from medpy.filter.binary import largest_connected_component
 from skimage.exposure import rescale_intensity
 from skimage.transform import resize
 

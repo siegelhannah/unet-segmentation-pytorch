@@ -12,6 +12,7 @@ import torch
 from skimage.io import imread
 import rasterio
 from torch.utils.data import Dataset
+import pickle
 
 # from utils import crop_sample, pad_sample, resize_sample, normalize_volume
 from utils import center_crop_sample # for making images smaller by cropping to a smaller box
@@ -25,44 +26,35 @@ class WildfireDataset(Dataset):
     def __init__(
         self, 
         data_dir,       # dir for all data- stacked files and masks
-        # image_size=256, # no longer necessary  - we resize by cropping instead
+        records_pkl,     # pkl file for organizing the pairs of files for samples
         transform=None, 
         crop_size_km=None, 
-        subset="train", 
+        subset="train",     # 'train' or 'validation'
         seed=42):
 
-        assert subset in ["all", "train", "validation"]
-
         self.transform = transform
-        # self.image_size = image_size
         self.crop_size_km = crop_size_km
         self.subset = subset
 
-        # construct paths based on subset:
-        if subset == "all":
-            # if using all, assume data dir contains stacked/ and fire_masks/ 
-            # if we use data_splitter.py to split directory structure into train/val, we don't need this
-            stacked_dir = os.path.join(data_dir, 'stacked')
-            masks_dir = os.path.join(data_dir, 'fire_masks')
-        else:
-            # using ALREADY-SEPARATED train/val -- expect pre-split directory structure (CREATED FROM data_splitter.py)
-            subset_dir = os.path.join(data_dir, subset)
-            stacked_dir = os.path.join(subset_dir, 'stacked')
-            masks_dir = os.path.join(subset_dir, 'fire_masks')
 
-        # load all data
-        self.samples=[]
-        # sort so inputs/outputs are in the same order based on date & coords
-        stacked_files = sorted([f for f in os.listdir(stacked_dir) if f.endswith('.tif')])
-        mask_files = sorted([f for f in os.listdir(masks_dir) if f.endswith('.tif')])
+        # Load the records from the pickle file. Each record is a dict:
+        # { 'date_t': ..., 'date_t_plus_one': ..., 'stacked_path': ..., 'fire_mask_path': ...,
+        #   'fire_predict_path': ... ... }
+        with open(records_pkl, 'rb') as f:
+            self.records = pickle.load(f)
 
-        assert len(stacked_files) == len(mask_files), "Mismatch between number of images and masks"
+        # Build the list of file path PAIRS. (samples)
+        # assuming 'stacked_path' and 'fire_predict_path' in the pickle are relative
 
-        # store file paths for loading as we go
-        self.sample_paths = [
-            (os.path.join(stacked_dir, sf), os.path.join(masks_dir, mf)) # list of tuples: (stacked, mask) file paths
-            for sf, mf in zip(stacked_files, mask_files)
-        ]
+        self.sample_paths = [] # list of tuple samples (stacked image, fire mask)
+        for record in self.records: # go thru pkl file dicts
+
+            # Adjust the paths so they join (depends on where the data is going to be stored)
+            stacked_rel = record['stacked_path'].lstrip("./")
+            mask_rel = record['fire_predict_path'].lstrip("./")
+            stacked_path = os.path.join(data_dir, stacked_rel)
+            mask_path = os.path.join(data_dir, mask_rel)
+            self.sample_paths.append((stacked_path, mask_path))
 
 
     def __len__(self):
@@ -97,7 +89,7 @@ class WildfireDataset(Dataset):
 
 
 
-   def __getitem__(self, idx):
+    def __getitem__(self, idx):
         # Load data on-demand
         stacked_path, mask_path = self.sample_paths[idx]
         
@@ -105,7 +97,7 @@ class WildfireDataset(Dataset):
         image = self.load_tif(stacked_path)  # Shape: (C, H, W)
         mask = self.load_tif(mask_path, single_band=True)  # Shape: (H, W)
         
-        # Transpose to (H, W, C) format to match original brainsegmentation dataset & transform funcs
+        # Transpose from (C,H,W) to (H, W, C) for easy use of transform functions
         image = np.transpose(image, (1, 2, 0))  # (C, H, W) -> (H, W, C)
         mask = np.expand_dims(mask, axis=2)  # (H, W) -> (H, W, 1)
         
@@ -120,7 +112,7 @@ class WildfireDataset(Dataset):
         if self.crop_size_km is not None:
             image, mask = center_crop_sample((image, mask), crop_size_km=self.crop_size_km)
         
-        # Transpose to (C, H, W) format for PyTorch
+        # Transpose back to (C, H, W) format for PyTorch
         image = np.transpose(image, (2, 0, 1))  # (H, W, C) -> (C, H, W)
         mask = np.transpose(mask, (2, 0, 1))    # (H, W, 1) -> (1, H, W)
         

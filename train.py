@@ -22,12 +22,14 @@ from utils import log_images#, dsc
 def datasets(args):
     train = Dataset(
         data_dir=args.images,
+        records_pkl=args.train_mapper,
         transform=transforms(scale=args.aug_scale, angle=args.aug_angle, flip_prob=0.5, max_shift_fraction=0.2),
         crop_size_km=args.crop_size_km,
         subset="train"
     )
     valid = Dataset(
         data_dir=args.images,
+        records_pkl=args.validation_mapper,
         transform=transforms(scale=args.aug_scale, angle=args.aug_angle, flip_prob=0.5, max_shift_fraction=0.2),
         crop_size_km=args.crop_size_km,
         subset="validation"
@@ -220,15 +222,18 @@ if __name__ == "__main__":
     parser.add_argument(
         "--logs", type=str, default="./logs", help="folder to save logs"
     )
+
+    # DATA
     parser.add_argument(
         "--images", type=str, default="./kaggle_3m", help="root folder with images"
     )
-    # parser.add_argument(
-    #     "--image-size",
-    #     type=int,
-    #     default=256,
-    #     help="target input image size (default: 256)",
-    # )
+    parser.add_argument(
+        "--train_mapper", type=str, default="./train_records.pkl", help="path to mapper pkl file for training data subset"
+    )
+    parser.add_argument(
+        "--validation_mapper", type=str, default="./test_records.pkl", help="path to mapper pkl file for validation data subset"
+    )
+  
     parser.add_argument(
         "--aug-scale",
         type=float,
