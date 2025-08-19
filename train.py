@@ -163,7 +163,7 @@ def main(args):
                     torch.save(unet.state_dict(), os.path.join(args.weights, "unet.pt"))
                 loss_valid = []
 
-    print("Best validation mean DSC: {:4f}".format(best_validation_loss))
+    print(f"Best validation mean DSC: {1.0 - best_validation_loss}")
 
 
 
