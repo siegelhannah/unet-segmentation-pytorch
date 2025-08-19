@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 # from dataset import BrainSegmentationDataset as Dataset
 from dataset import WildfireDataset as Dataset
-from logger import Logger
+#from logger import Logger
 from loss import DiceLoss
 from transform import transforms
 from unet import UNet
@@ -65,8 +65,9 @@ def data_loaders(args):
 
 
 
-def log_loss_summary(logger, loss, step, prefix=""):
-    logger.scalar_summary(prefix + "loss", np.mean(loss), step)
+
+# def log_loss_summary(logger, loss, step, prefix=""):
+#     logger.scalar_summary(prefix + "loss", np.mean(loss), step)
 
 
 def makedirs(args):
@@ -84,12 +85,16 @@ def snapshotargs(args):
 
 
 def main(args):
+    print("[DEBUG] Starting training, creating directories...")
     makedirs(args)
     snapshotargs(args)
     device = torch.device("cpu" if not torch.cuda.is_available() else args.device)
 
+    # create dataloaders
+    print("[DEBUG] Creating datasets and data loaders...")
     loader_train, loader_valid = data_loaders(args)
     loaders = {"train": loader_train, "valid": loader_valid}
+    print("[DEBUG] Data loaders created")
 
     unet = UNet(in_channels=Dataset.in_channels, out_channels=Dataset.out_channels)
     unet.to(device)
@@ -99,7 +104,7 @@ def main(args):
 
     optimizer = optim.Adam(unet.parameters(), lr=args.lr)
 
-    logger = Logger(args.logs)
+    # logger = Logger(args.logs)
     loss_train = []
     loss_valid = []
 
@@ -135,11 +140,11 @@ def main(args):
                             if i * args.batch_size < args.vis_images:
                                 tag = "image/{}".format(i)
                                 num_images = args.vis_images - i * args.batch_size
-                                logger.image_list_summary(
-                                    tag,
-                                    log_images(x, y_true, y_pred)[:num_images],
-                                    step,
-                                )
+                                # logger.image_list_summary(
+                                #     tag,
+                                #     log_images(x, y_true, y_pred)[:num_images],
+                                #     step,
+                                # )
 
                     # training-specific operations: accumulate loss, backward pass, step
                     if phase == "train":
@@ -149,16 +154,16 @@ def main(args):
 
                 # logging stuff
                 if phase == "train" and (step + 1) % 10 == 0:
-                    log_loss_summary(logger, loss_train, step)
+                    # log_loss_summary(logger, loss_train, step)
                     loss_train = []
 
             if phase == "valid":
-                log_loss_summary(logger, loss_valid, step, prefix="val_")
+                # log_loss_summary(logger, loss_valid, step, prefix="val_")
                 mean_val_loss = np.mean(loss_valid) # mean of all validation losses
                
                 # print dsc (1 - diceloss: higher is better)
                 mean_val_dsc = 1.0 - mean_val_loss
-                logger.scalar_summary("val_dsc", mean_val_dsc, step)
+                # logger.scalar_summary("val_dsc", mean_val_dsc, step)
                 
                 if mean_val_loss < best_validation_loss:
                     best_validation_loss = mean_val_loss

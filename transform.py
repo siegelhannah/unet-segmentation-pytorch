@@ -59,6 +59,10 @@ class Scale(object):
             image = image[x_min:x_max, x_min:x_max, ...]
             mask = mask[x_min:x_max, x_min:x_max, ...]
 
+        # Ensure contiguity and standard dtype
+        image = np.ascontiguousarray(image).astype(np.float32)
+        mask = np.ascontiguousarray(mask).astype(np.float32)
+
         return image, mask
 
 
@@ -75,6 +79,11 @@ class Rotate(object):
         mask = rotate(
             mask, angle, resize=False, order=0, preserve_range=True, mode="constant"
         )
+
+        # Ensure contiguity and standard dtype
+        image = np.ascontiguousarray(image).astype(np.float32)
+        mask = np.ascontiguousarray(mask).astype(np.float32)
+        
         return image, mask
 
 
@@ -87,10 +96,16 @@ class HorizontalFlip(object):
         image, mask = sample
 
         if np.random.rand() > self.flip_prob:
+            image = np.ascontiguousarray(image).astype(np.float32)
+            mask = np.ascontiguousarray(mask).astype(np.float32)
             return image, mask
 
         image = np.fliplr(image).copy()
         mask = np.fliplr(mask).copy()
+
+        # Ensure contiguity and standard dtype
+        image = np.ascontiguousarray(image).astype(np.float32)
+        mask = np.ascontiguousarray(mask).astype(np.float32)
 
         return image, mask
 
@@ -128,6 +143,10 @@ class CenterShift(object):
         
         shifted_mask = np.roll(mask, shift_x, axis=1)
         shifted_mask = np.roll(shifted_mask, shift_y, axis=0)
+
+        # Ensure contiguity and standard dtype
+        shifted_image = np.ascontiguousarray(shifted_image.copy()).astype(np.float32)
+        shifted_mask = np.ascontiguousarray(shifted_mask.copy()).astype(np.float32)
         
         return shifted_image, shifted_mask
 

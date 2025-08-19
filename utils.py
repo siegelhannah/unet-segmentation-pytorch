@@ -50,7 +50,13 @@ def center_crop_sample(sample, crop_size_km, original_size_km=50.01, original_pi
     # Apply crop (H, W, C format)
     cropped_image = image[start_y:end_y, start_x:end_x, :]
     cropped_mask = mask[start_y:end_y, start_x:end_x, :]
+
+    # Ensure contiguous, writable copies (and convert to float32 if needed)
+    cropped_image = np.ascontiguousarray(cropped_image.copy()).astype(np.float32)
+    cropped_mask = np.ascontiguousarray(cropped_mask.copy()).astype(np.float32)
     
+    print(f"[DEBUG] Cropping sample to ({end_y - start_y}, {end_x - start_x})")
+
     return cropped_image, cropped_mask
 
 

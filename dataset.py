@@ -56,6 +56,7 @@ class WildfireDataset(Dataset):
             mask_path = os.path.join(data_dir, mask_rel)
             self.sample_paths.append((stacked_path, mask_path))
 
+        print("[DEBUG] Got sample paths, total:", len(self.sample_paths))
 
     def __len__(self):
         return len(self.sample_paths)
@@ -63,11 +64,16 @@ class WildfireDataset(Dataset):
     
     def load_tif(self, filepath, single_band=False):
         # for reading/loading data from tifs/rasters
+        # add nodata handling
         with rasterio.open(filepath) as dataset:
             if single_band:
                 data = dataset.read(1) # shape (H, W)
             else:
                 data = dataset.read()   # shape (C, H, W)
+                if not single_band and data.shape[0] >= 8:
+                    # Replace NaNs in band 8 (NDVI) with 0.0
+                    data[7] = np.nan_to_num(data[7], nan=0.0)
+
             return data.astype(np.float32)
                 
 
@@ -92,33 +98,43 @@ class WildfireDataset(Dataset):
     def __getitem__(self, idx):
         # Load data on-demand
         stacked_path, mask_path = self.sample_paths[idx]
+        print(f"[DEBUG] Loading sample {idx} - {stacked_path}, {mask_path}")
         
         # Load the data
         image = self.load_tif(stacked_path)  # Shape: (C, H, W)
         mask = self.load_tif(mask_path, single_band=True)  # Shape: (H, W)
+
+        # TODO: if not correct number of channels, skip
         
+        print(f"[DEBUG] BEFORE transpose: image {image.shape}, mask {mask.shape}")
         # Transpose from (C,H,W) to (H, W, C) for easy use of transform functions
         image = np.transpose(image, (1, 2, 0))  # (C, H, W) -> (H, W, C)
         mask = np.expand_dims(mask, axis=2)  # (H, W) -> (H, W, 1)
+        print(f"[DEBUG] After transpose: image {image.shape}, mask {mask.shape}")
         
         # Normalize (per-channel normalization)
         image = self.normalize_channels(image)
+        print("[DEBUG] After normalization, image mean", image.mean())
         
         # Apply transforms if provided (transforms expect HWC format)
         if self.transform is not None:
             image, mask = self.transform((image, mask))
+            print(f"[DEBUG] After transforms: image {image.shape}, mask {mask.shape}")
         
         # Apply final crop if specified (LAST step) 50.01km -> ~15 km
         if self.crop_size_km is not None:
             image, mask = center_crop_sample((image, mask), crop_size_km=self.crop_size_km)
+            print(f"[DEBUG] After center crop: image {image.shape}, mask {mask.shape}")
         
         # Transpose back to (C, H, W) format for PyTorch
         image = np.transpose(image, (2, 0, 1))  # (H, W, C) -> (C, H, W)
         mask = np.transpose(mask, (2, 0, 1))    # (H, W, 1) -> (1, H, W)
+        print(f"[DEBUG] Before tensor conversion: image {image.shape}, mask {mask.shape}")
         
         # Convert to tensors
         image_tensor = torch.from_numpy(image).float()  # Shape: (C, H, W)
         mask_tensor = torch.from_numpy(mask).float()    # Shape: (1, H, W)
+        print(f"[DEBUG] Sample {idx} processed, tensor shapes: image {image_tensor.shape}, mask {mask_tensor.shape}")
         
         return image_tensor, mask_tensor
 
