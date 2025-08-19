@@ -40,14 +40,15 @@ class WildfireDataset(Dataset):
 
         # construct paths based on subset:
         if subset == "all":
-            # if using all, assume data dir contains stacked/ and fire_final/
+            # if using all, assume data dir contains stacked/ and fire_masks/ 
+            # if we use data_splitter.py to split directory structure into train/val, we don't need this
             stacked_dir = os.path.join(data_dir, 'stacked')
-            masks_dir = os.path.join(data_dir, 'fire_final')
+            masks_dir = os.path.join(data_dir, 'fire_masks')
         else:
-            # if using ALREADY-SEPARATED train/val, expect pre-split directory structure
+            # using ALREADY-SEPARATED train/val -- expect pre-split directory structure (CREATED FROM data_splitter.py)
             subset_dir = os.path.join(data_dir, subset)
             stacked_dir = os.path.join(subset_dir, 'stacked')
-            masks_dir = os.path.join(subset_dir, 'fire_final')
+            masks_dir = os.path.join(subset_dir, 'fire_masks')
 
         # load all data
         self.samples=[]
