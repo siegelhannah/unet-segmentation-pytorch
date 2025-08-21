@@ -31,6 +31,9 @@ def center_crop_sample(sample, crop_size_km, original_size_km=50.01, original_pi
     # Calculate crop size in pixels
     pixels_per_km = original_pixels / original_size_km
     crop_pixels = int(crop_size_km * pixels_per_km)
+
+    # Ensure crop size in pixels is a multiple of 16
+    crop_pixels = (crop_pixels // 16) * 16
     
     # Get current image size (assuming H, W, C format at this point)
     height, width = image.shape[:2]
