@@ -44,31 +44,41 @@ A segmentation model implemented in this repository is U-Net as described in [As
 To train the model:
 
 Ensure your dataset is prepared and organized as described above.
+
 Run the train.py script. Default paths and parameters can be adjusted as needed.
+
 python train.py --data_dir path/to/data_dir --records_pkl path/to/train_records.pkl
+
 For more options and help, run:
 
 python train.py --help
+
 
 ## Inference
 To perform inference using the trained model:
 
 Ensure the dataset is prepared and the model weights are available (in ./weights).
+
 Run the inference.py script with specified paths to weights and images.
+
 python inference.py --weights path/to/weights.pt --data_dir path/to/data_dir --records_pkl path/to/test_records.pkl
+
 For more options and help, run:
 
 python inference.py --help
 
 
 ## Results
-The primary metric currently returned is the Dice Similarity Coefficient (DSC), which is calculated as 1 − dice loss. This metric provides an indication of the overlap between the predicted wildfire segmentation mask and the ground truth mask. Higher DSC values indicate better model performance.
+The primary metric currently returned is the Dice Similarity Coefficient (DSC), which is calculated as 1 − dice loss. 
+
+This metric provides an indication of the overlap between the predicted wildfire segmentation mask and the ground truth mask. Higher DSC values indicate better model performance.
 
 
 
 ## Docker
 To build and run the Docker container:
 
+python
 docker build -t wildfire-segmentation .
 
 nvidia-docker run --rm --shm-size 8G -it -v `pwd`:/workspace wildfire-segmentation
