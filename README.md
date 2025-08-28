@@ -1,11 +1,81 @@
-# U-Net for brain segmentation ADAPTED FOR A WILDFIRE-PREDICTION USE CASE
+# U-Net for Wildfire Segmentation
 
-U-Net implementation in PyTorch for FLAIR abnormality segmentation in brain MRI based on a deep learning segmentation algorithm used in [Association of genomic subtypes of lower-grade gliomas with shape features automatically extracted by a deep learning algorithm](https://doi.org/10.1016/j.compbiomed.2019.05.002).
+This repository contains an implementation of the U-Net model in PyTorch, adapted for the segmentation of wildfire extents using multiband raster images. The original implementation was used for brain MRI segmentation and has been modified to handle wildfire prediction data.
 
-This repository is an all Python port of official MATLAB/Keras implementation in [brain-segmentation](https://github.com/mateuszbuda/brain-segmentation).
-Weights for trained models are provided and can be used for inference or fine-tuning on a different dataset.
-If you use code or weights shared in this repository, please consider citing:
+## Overview
 
+The goal of this project is to predict wildfire extent spread using U-Net segmentation models on remotely-sensed multiband raster images. The input to the model is a stacked image at a given timestep, and the output is a predicted wildfire segmentation mask at the next timestep.
+
+## Dataset Preparation
+
+The dataset should be organized into directories containing stacked multiband image samples and corresponding fire masks. These directories are accessed by the dataset.py script to load data for training and validation.
+
+## Directory Structure
+data_dir/
+    fire_final/
+    stacked/
+    train_records.pkl
+    Test_records.pkl
+
+fire_final/: Contains the wildfire segmentation .tif masks.
+stacked/: Contains the stacked multiband .tif images.
+train_records.pkl and test_records.pkl: Pickle files (lists of dictionaries) mapping the image and mask pairs for training and testing.
+
+## DataLoader Initialization
+The dataset.py script has been adapted to include dataloaders for wildfire data:
+
+def __init__(
+        self, 
+        data_dir,       # Directory for all data- stacked files and masks
+        records_pkl,    # Pickle file for organizing the pairs of files for samples
+        transform=None, 
+        crop_size_km=None, 
+        subset="train", # 'train' or 'validation'
+        seed=42):
+
+## Model
+
+A segmentation model implemented in this repository is U-Net as described in [Association of genomic subtypes of lower-grade gliomas with shape features automatically extracted by a deep learning algorithm](https://doi.org/10.1016/j.compbiomed.2019.05.002) with added batch normalization.
+
+![unet](./assets/unet.png)
+
+
+## Training
+To train the model:
+
+Ensure your dataset is prepared and organized as described above.
+Run the train.py script. Default paths and parameters can be adjusted as needed.
+python train.py --data_dir path/to/data_dir --records_pkl path/to/train_records.pkl
+For more options and help, run:
+
+python train.py --help
+
+## Inference
+To perform inference using the trained model:
+
+Ensure the dataset is prepared and the model weights are available (in ./weights).
+Run the inference.py script with specified paths to weights and images.
+python inference.py --weights path/to/weights.pt --data_dir path/to/data_dir --records_pkl path/to/test_records.pkl
+For more options and help, run:
+
+python inference.py --help
+
+
+## Results
+The primary metric currently returned is the Dice Similarity Coefficient (DSC), which is calculated as 1 − dice loss. This metric provides an indication of the overlap between the predicted wildfire segmentation mask and the ground truth mask. Higher DSC values indicate better model performance.
+
+
+
+## Docker
+To build and run the Docker container:
+
+docker build -t wildfire-segmentation .
+
+nvidia-docker run --rm --shm-size 8G -it -v `pwd`:/workspace wildfire-segmentation
+
+
+
+This repository was adapted from an existing implementation: https://github.com/mateuszbuda/brain-segmentation-pytorch/
 ```
 @article{buda2019association,
   title={Association of genomic subtypes of lower-grade gliomas with shape features automatically extracted by a deep learning algorithm},
@@ -18,73 +88,5 @@ If you use code or weights shared in this repository, please consider citing:
 }
 ```
 
-## docker
 
-```
-docker build -t brainseg .
-```
 
-```
-nvidia-docker run --rm --shm-size 8G -it -v `pwd`:/workspace brainseg
-```
-
-## PyTorch Hub
-
-Loading model using PyTorch Hub: [pytorch.org/hub/mateuszbuda\_brain-segmentation-pytorch\_unet](https://pytorch.org/hub/mateuszbuda_brain-segmentation-pytorch_unet/)
-
-```python
-import torch
-model = torch.hub.load('mateuszbuda/brain-segmentation-pytorch', 'unet',
-    in_channels=3, out_channels=1, init_features=32, pretrained=True)
-```
-
-## data
-
-![dataset](./assets/brain-mri-lgg.png)
-
-Dataset used for development and evaluation was made publicly available on Kaggle: [kaggle.com/mateuszbuda/lgg-mri-segmentation](https://www.kaggle.com/mateuszbuda/lgg-mri-segmentation).
-It contains MR images from [TCIA LGG collection](https://wiki.cancerimagingarchive.net/display/Public/TCGA-LGG) with segmentation masks approved by a board-certified radiologist at Duke University.
-
-## model
-
-A segmentation model implemented in this repository is U-Net as described in [Association of genomic subtypes of lower-grade gliomas with shape features automatically extracted by a deep learning algorithm](https://doi.org/10.1016/j.compbiomed.2019.05.002) with added batch normalization.
-
-![unet](./assets/unet.png)
-
-## results
-
-|![TCGA_DU_6404_19850629](./assets/TCGA_DU_6404_19850629.gif)|![TCGA_HT_7879_19981009](./assets/TCGA_HT_7879_19981009.gif)|![TCGA_CS_4944_20010208](./assets/TCGA_CS_4944_20010208.gif)|
-|:-------:|:-------:|:-------:|
-| 94% DSC | 91% DSC | 89% DSC |
-
-Qualitative results for validation cases from three different institutions with DSC of 94%, 91%, and 89%.
-Green outlines correspond to ground truth and red to model predictions.
-Images show FLAIR modality after preprocessing. 
-
-![dsc](./assets/dsc.png)
-
-Distribution of DSC for 10 randomly selected validation cases.
-The red vertical line corresponds to mean DSC (91%) and the green one to median DSC (92%).
-Results may be biased since model selection was based on the mean DSC on these validation cases.
-
-## inference
-
-1. Download and extract the dataset from [Kaggle](https://www.kaggle.com/mateuszbuda/lgg-mri-segmentation).
-2. Run docker container.
-3. Run `inference.py` script with specified paths to weights and images. Trained weights for input images of size 256x256 are provided in `./weights/unet.pt` file. For more options and help run: `python3 inference.py --help`.
-
-## train
-
-1. Download and extract the dataset from [Kaggle](https://www.kaggle.com/mateuszbuda/lgg-mri-segmentation).
-2. Run docker container.
-3. Run `train.py` script. Default path to images is `./kaggle_3m`. For more options and help run: `python3 train.py --help`.
-
-Training can be also run using Kaggle kernel shared together with the dataset: [kaggle.com/mateuszbuda/brain-segmentation-pytorch](https://www.kaggle.com/mateuszbuda/brain-segmentation-pytorch).
-Due to memory limitations for Kaggle kernels, input images are of size 224x224 instead of 256x256.
-
-Running this code on a custom dataset would likely require adjustments in `dataset.py`.
-Should you need help with this, just open an issue.
-
-## TensorRT inference
-
-If you want to run the model inference with TensorRT runtime, here is a blog post from Nvidia that covers this: [Speeding Up Deep Learning Inference Using TensorRT](https://developer.nvidia.com/blog/speeding-up-deep-learning-inference-using-tensorrt/).
