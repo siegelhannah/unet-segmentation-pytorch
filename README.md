@@ -24,6 +24,7 @@ train_records.pkl and test_records.pkl: Pickle files (lists of dictionaries) map
 ## DataLoader Initialization
 The dataset.py script has been adapted to include dataloaders for wildfire data:
 
+```python
 def __init__(
         self, 
         data_dir,       # Directory for all data- stacked files and masks
@@ -78,7 +79,6 @@ This metric provides an indication of the overlap between the predicted wildfire
 ## Docker
 To build and run the Docker container:
 
-python
 docker build -t wildfire-segmentation .
 
 nvidia-docker run --rm --shm-size 8G -it -v `pwd`:/workspace wildfire-segmentation
