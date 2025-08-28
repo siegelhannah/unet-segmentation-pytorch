@@ -11,11 +11,11 @@ The goal of this project is to predict wildfire extent spread using U-Net segmen
 The dataset should be organized into directories containing stacked multiband image samples and corresponding fire masks. These directories are accessed by the dataset.py script to load data for training and validation.
 
 ## Directory Structure
-data_dir/
-    fire_final/
-    stacked/
-    train_records.pkl
-    Test_records.pkl
+- data_dir/
+    - fire_final/
+    - stacked/
+    - train_records.pkl
+    - Test_records.pkl
 
 fire_final/: Contains the wildfire segmentation .tif masks.
 stacked/: Contains the stacked multiband .tif images.
