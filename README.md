@@ -37,7 +37,7 @@ def __init__(
 
 ## Model
 
-A segmentation model implemented in this repository is U-Net as described in [Association of genomic subtypes of lower-grade gliomas with shape features automatically extracted by a deep learning algorithm](https://doi.org/10.1016/j.compbiomed.2019.05.002) with added batch normalization.
+A segmentation model implemented in this repository is U-Net.
 
 ![unet](./assets/unet.png)
 
@@ -45,15 +45,17 @@ A segmentation model implemented in this repository is U-Net as described in [As
 ## Training
 To train the model:
 
-Ensure your dataset is prepared and organized as described above.
+Ensure your dataset is prepared and organized as described above. Run the train.py script. Default paths and parameters can be adjusted as needed.
 
-Run the train.py script. Default paths and parameters can be adjusted as needed.
-
-python train.py --data_dir path/to/data_dir --records_pkl path/to/train_records.pkl
+```python
+train.py --data_dir path/to/data_dir --records_pkl path/to/train_records.pkl
+```
 
 For more options and help, run:
 
-python train.py --help
+```python
+train.py --help
+```
 
 
 ## Inference
@@ -63,11 +65,15 @@ Ensure the dataset is prepared and the model weights are available (in ./weights
 
 Run the inference.py script with specified paths to weights and images.
 
-python inference.py --weights path/to/weights.pt --data_dir path/to/data_dir --records_pkl path/to/test_records.pkl
+```python
+inference.py --weights path/to/weights.pt --data_dir path/to/data_dir --records_pkl path/to/test_records.pkl
+```
 
 For more options and help, run:
 
-python inference.py --help
+```python
+inference.py --help
+```
 
 
 ## Results
@@ -80,10 +86,11 @@ This metric provides an indication of the overlap between the predicted wildfire
 ## Docker
 To build and run the Docker container:
 
+```python
 docker build -t wildfire-segmentation .
 
 nvidia-docker run --rm --shm-size 8G -it -v `pwd`:/workspace wildfire-segmentation
-
+```
 
 
 This repository was adapted from an existing implementation: https://github.com/mateuszbuda/brain-segmentation-pytorch/
